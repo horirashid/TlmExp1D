@@ -1,0 +1,570 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Including Libraries
+
+```{r}
+library(readr)
+library(dplyr)
+```
+
+Read CSV files of pre and post
+
+```{r}
+pre_data <- read_csv('../TLM_Exp_1_PRE.csv', col_types = cols(
+  uid = col_character(),
+  group = col_factor()
+) )
+
+post_data <- read_csv('../TLM_Exp_1_POST.csv', col_types = cols(
+  uid = col_character(),
+  group = col_factor()
+))
+```
+
+```{r}
+print(levels(pre_data$group))
+```
+
+```{r}
+print(levels(post_data$group))
+```
+
+```{r}
+pre_data %>% select(uid, group) %>% summary()
+```
+
+```{r}
+post_data %>% select(uid, group) %>% summary()
+```
+
+Identify rows with missing values -- PRE
+
+```{r}
+rows_with_missing <- which(rowSums(is.na(pre_data)) > 0)
+rows_with_missing
+```
+
+Print rows with missing values PRE
+
+```{r}
+print(pre_data[rows_with_missing, ])
+# ONLY 5 STUDENTS HAVE MISSING DATA
+```
+
+Replace NA with 0
+
+```{r}
+pre_df_nona <- pre_data %>% mutate_at(vars(-c(uid, group)), ~replace(., is.na(.), 0))
+
+```
+
+Identify rows with missing values -- PRE NEW
+
+```{r}
+rows_with_missing <- which(rowSums(is.na(pre_df_nona)) > 0)
+rows_with_missing
+```
+
+## Repeat the same NA identification and replacement on Post data
+
+Identify rows with missing values -- post
+
+```{r}
+rows_with_missing <- which(rowSums(is.na(post_data)) > 0)
+rows_with_missing
+```
+
+Print rows with missing values post
+
+```{r}
+print(post_data[rows_with_missing, ])
+# ONLY 5 STUDENTS HAVE MISSING DATA
+```
+
+Replace NA with 0
+
+```{r}
+post_df_nona <- post_data %>% mutate_at(vars(-c(uid, group)), ~replace(., is.na(.), 0))
+
+```
+
+Identify rows with missing values -- post NEW
+
+```{r}
+rows_with_missing <- which(rowSums(is.na(post_df_nona)) > 0)
+rows_with_missing
+```
+
+```{r}
+
+## PRE
+# calculate the total duration by summing duration in all subcategories
+pre_complete <- pre_df_nona %>% rowwise() %>%
+    mutate(total_time = sum(c(duration_aa, duration_as, duration_dd, duration_in, duration_ii), na.rm = TRUE))
+
+# calcualte total score by summing the score of each subcategory
+pre_complete <- pre_complete %>% rowwise() %>%
+mutate(score = sum(c(total_aa, total_as, total_dd, total_in, total_ii), na.rm = TRUE))
+
+pre_complete$score
+# create a new variable containing only these columns
+pre_totals <- pre_complete %>% select(uid, group, total_aa, total_as, total_dd, total_in, total_ii, total_time, score)
+```
+
+```{r}
+# show it
+pre_totals
+```
+
+```{r}
+
+# show the mean of both groups at PRE for final total score
+pre_totals %>% group_by(group) %>% summarise(mean_total=mean(score), .groups = 'drop')
+# show the mean of both groups at PRE for each subcateory, time, and final total score
+pre_totals %>% select( group, total_aa, total_as, total_dd, total_in, total_ii, total_time, score) %>% 
+              group_by(group) %>% summarise(across(everything(), mean))
+```
+
+```{r}
+## POST
+# calculate the total duration by summing duration in all subcategories
+post_complete <- post_df_nona %>% rowwise() %>%
+  mutate(total_time = sum(c(duration_aa, duration_as, duration_dd, duration_in, duration_ii), na.rm = TRUE))
+
+# calcualte total score by summing the score of each subcategory
+post_complete <- post_complete %>% rowwise() %>%
+  mutate(score = sum(c(total_aa, total_as, total_dd, total_in, total_ii), na.rm = TRUE))
+
+# create a new variable con/taining only these columns
+post_totals <- post_complete %>% select(uid, group, total_aa, total_as, total_dd, total_in, total_ii, total_time, score)
+```
+
+```{r}
+# show it
+post_totals
+```
+
+```{r}
+# show the mean of both groups at post for final total score
+post_totals %>% group_by(group) %>% summarise(mean_total=mean(score), .groups = 'drop')
+# show the mean of both groups at post for each subcateory, time, and final total score
+post_totals %>% select( group, total_aa, total_as, total_dd, total_in, total_ii, total_time, score) %>% 
+  group_by(group) %>% summarise(across(everything(), mean),
+                                .groups = 'drop')  %>% as.data.frame()
+
+```
+
+### prepare data to calculate the normalized learning gain
+
+```{r}
+names(pre_totals)
+```
+
+```{r}
+names(pre_totals) <- c('uid', 'group', 'pre_total_aa', 'pre_total_as', 'pre_total_dd', 'pre_total_in', 'pre_total_ii', 'pre_total_time', 'pre_score' )
+names(post_totals) <- c('uid', 'group', 'post_total_aa', 'post_total_as', 'post_total_dd', 'post_total_in', 'post_total_ii', 'post_total_time', 'post_score') 
+```
+
+```{r}
+# Merge the pre-test and post-test datasets based on the user id
+pre_post_totals <- merge(pre_totals, post_totals, by = c("uid", 'group'), all = FALSE)
+nrow(pre_post_totals)
+```
+
+```{r}
+names(pre_post_totals)
+
+```
+
+```{r}
+pre_post_totals %>% group_by(group) %>% count(group)
+```
+
+calculate normalized gain for score Normalized Gain = (post_score - pre_score) / (maximum possible score - pre_score)
+
+```{r}
+# create the dataframe
+pre_post_ng_score <- pre_post_totals %>% select(uid, group, pre_score, post_score)
+pre_post_ng_score
+```
+
+calculate the difference
+
+```{r}
+pre_post_ng_score <- pre_post_ng_score %>% mutate(diff=post_score-pre_score)
+```
+
+calculate normalized gain
+
+```{r}
+pre_post_ng_score <- pre_post_ng_score %>% mutate(ng=diff/(40-pre_score))
+pre_post_ng_score$ng <- round(pre_post_ng_score$ng, 3)
+pre_post_ng_score
+```
+
+#### show the comparison of normalized gain between control and experiment
+
+```{r}
+pre_post_ng_score %>% group_by(group) %>%
+  summarize(mean_ng = mean(ng),
+            sd_ng = sd(ng))
+```
+
+#### show the comparison of total time spent on the test between control and experiment
+
+```{r}
+pre_post_totals %>% group_by(group) %>%
+  summarize(mean_pre_total_time = mean(pre_total_time),
+            sd_pre_total_time = sd(pre_total_time),
+            mean_post_total_time = mean(post_total_time),
+            sd_post_total_time = sd(post_total_time))
+```
+
+#### calculate time spent per category
+
+```{r}
+pre_times <- pre_df_nona %>% select(uid, group, duration_aa, duration_as, duration_dd, duration_in, duration_ii)
+names(pre_times) = c('uid', 'group', 'pre_duration_aa', 'pre_duration_as', 'pre_duration_dd', 'pre_duration_in', 'pre_duration_ii')
+post_times <- post_df_nona %>% select(uid, group, duration_aa, duration_as, duration_dd, duration_in, duration_ii)
+names(post_times) = c('uid', 'group', 'post_duration_aa', 'post_duration_as', 'post_duration_dd', 'post_duration_in', 'post_duration_ii')
+```
+
+merge pre and post
+
+```{r}
+pre_post_times <- merge(pre_times, post_times, by= c('uid', 'group'))
+```
+
+```{r}
+library(ggplot2)
+library(tidyr)
+
+# Select relevant columns starting with 'pre_' and 'post_'
+variables <- pre_post_times %>%
+  select(matches("^pre_|^post_"), group)
+
+# Reshape the data from wide to long format
+data_long <- variables %>%
+  pivot_longer(cols = -group, names_to = "Variable", values_to = "Value") %>%
+  separate(col = "Variable", into = c("Phase", "Variable"), sep = "_", remove = FALSE)
+
+# Create the boxplot grouped by 'group'
+#ggplot(df_long, aes(x = Phase, y = duration, fill = group)) +
+#  geom_boxplot() +
+  #facet_wrap(~ group) +
+#  labs(x = "Phase", y = "Duration", title = "Comparison of Pre and Post Durations by Group") +
+#    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+#### show the comparison of time spent on the test between control and experiment for each category
+
+1- AA
+
+```{r}
+pre_post_times %>% group_by(group) %>%
+  summarize(mean_pre_time_AA = mean(pre_duration_aa),
+            sd_pre_time_AA = sd(pre_duration_aa),
+            mean_post_time_AA = mean(post_duration_aa),
+            sd_post_time_AA = sd(post_duration_aa))
+```
+
+2- AS
+
+```{r}
+pre_post_times %>% group_by(group) %>%
+  summarize(mean_pre_time_AS = mean(pre_duration_as),
+            sd_pre_time_AS = sd(pre_duration_as),
+            mean_post_time_AS = mean(post_duration_as),
+            sd_post_time_AS = sd(post_duration_as))
+```
+
+3- DD
+
+```{r}
+pre_post_times %>% group_by(group) %>%
+  summarize(mean_pre_time_DD = mean(pre_duration_dd),
+            sd_pre_time_DD = sd(pre_duration_dd),
+            mean_post_time_DD = mean(post_duration_dd),
+            sd_post_time_DD = sd(post_duration_dd))
+```
+
+4- IN
+
+```{r}
+pre_post_times %>% group_by(group) %>%
+  summarize(mean_pre_time_IN = mean(pre_duration_in),
+            sd_pre_time_IN = sd(pre_duration_in),
+            mean_post_time_IN = mean(post_duration_in),
+            sd_post_time_IN = sd(post_duration_in))
+```
+
+5- II
+
+```{r}
+pre_post_times %>% group_by(group) %>%
+  summarize(mean_pre_time_II = mean(pre_duration_ii),
+            sd_pre_time_II = sd(pre_duration_ii),
+            mean_post_time_II = mean(post_duration_ii),
+            sd_post_time_II = sd(post_duration_ii))
+```
+
+```{r}
+
+pre_post_ng_score %>% filter(!(is.infinite(ng) | is.nan(ng))) %>%
+  group_by(group) %>%
+  summarize(mean_ng = mean(ng),
+            sd_ng = sd(ng))
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(pre_post_ng_score, aes(x = group, y = ng)) + 
+  geom_boxplot()
+
+```
+
+## calculation of Normazlied gain for each category
+
+### 1. Analyzing Arguements
+
+```{r}
+aa_pre_post_ng <- pre_post_totals %>% select(uid, group, pre_total_aa, post_total_aa)
+
+aa_pre_post_ng <- aa_pre_post_ng %>% mutate(diff = post_total_aa-pre_total_aa)
+aa_pre_post_ng <- aa_pre_post_ng %>% mutate(aa_ng = diff/(8-pre_total_aa))
+
+# aa_pre_post_ng[ is.infinite(aa_pre_post_ng$aa_ng),]$aa_ng = NA
+
+aa_pre_post_ng %>% filter(!(is.infinite(aa_ng) | is.nan(aa_ng))) %>%
+  group_by(group) %>%
+  summarize(mean_ng = mean(aa_ng),
+            sd_ng = sd(aa_ng))
+```
+
+### 2. Assumptions
+
+```{r}
+as_pre_post_ng <- pre_post_totals %>% select(uid, group, pre_total_as, post_total_as)
+
+as_pre_post_ng <- as_pre_post_ng %>% mutate(diff = post_total_as-pre_total_as)
+as_pre_post_ng <- as_pre_post_ng %>% mutate(as_ng = diff/(8-pre_total_as))
+
+as_pre_post_ng %>% filter(!(is.infinite(as_ng) | is.nan(as_ng))) %>%
+  group_by(group) %>%
+  summarize(mean_ng = mean(as_ng),
+            sd_ng = sd(as_ng))
+```
+
+```{r}
+as_pre_post_ng
+```
+
+### 3. Deductions
+
+```{r}
+dd_pre_post_ng <- pre_post_totals %>% select(uid, group, pre_total_dd, post_total_dd)
+
+dd_pre_post_ng <- dd_pre_post_ng %>% mutate(diff = post_total_dd-pre_total_dd)
+dd_pre_post_ng <- dd_pre_post_ng %>% mutate(dd_ng = diff/(8-pre_total_dd))
+
+dd_pre_post_ng %>% filter(!(is.infinite(dd_ng) | is.nan(dd_ng))) %>%
+  group_by(group) %>%
+  summarize(mean_ng = mean(dd_ng),
+            sd_ng = sd(dd_ng))
+```
+
+### 4. inference
+
+```{r}
+in_pre_post_ng <- pre_post_totals %>% select(uid, group, pre_total_in, post_total_in)
+
+in_pre_post_ng <- in_pre_post_ng %>% mutate(diff = post_total_in-pre_total_in)
+in_pre_post_ng <- in_pre_post_ng %>% mutate(in_ng = diff/(8-pre_total_in))
+
+in_pre_post_ng %>% filter(!(is.infinite(in_ng) | is.nan(in_ng))) %>%
+  group_by(group) %>%
+  summarize(mean_ng = mean(in_ng),
+            sd_ng = sd(in_ng))
+```
+
+### 5. interpreting information
+
+```{r}
+ii_pre_post_ng <- pre_post_totals %>% select(uid, group, pre_total_ii, post_total_ii)
+
+ii_pre_post_ng <- ii_pre_post_ng %>% mutate(diff = post_total_ii-pre_total_ii)
+ii_pre_post_ng <- ii_pre_post_ng %>% mutate(ii_ng = diff/(8-pre_total_ii))
+
+ii_pre_post_ng %>% filter(!(is.infinite(ii_ng) | is.nan(ii_ng))) %>%
+  group_by(group) %>%
+  summarize(mean_ng = mean(ii_ng),
+            sd_ng = sd(ii_ng))
+```
+
+#### Analyzing Arguments count plot
+
+```{r}
+####  Normalized Change
+#count(as_pre_post_ng[as_pre_post_ng$pre_total_as==8 & as_pre_post_ng$post_total_as==8,])
+aa_pre_post_ng %>% filter((pre_total_aa==post_total_aa)&(pre_total_aa==8 | pre_total_aa==0))
+ggplot(aa_pre_post_ng, aes(x = pre_total_aa, y = post_total_aa)) +
+  geom_count(aes(color = ..n.., size = ..n..))
+```
+
+### Calculation of standard deviation
+
+```{r}
+# Calculate mean and standard deviation of 'score' column grouped by 'group'
+
+pre_post_ng_score %>%
+  summarise(mean_total = mean(diff),
+            std_dev_total = sd(diff),
+            .groups = 'drop') 
+
+pre_post_ng_score %>% filter(abs(diff) < 4) %>%
+  summarise(mean_total = mean(diff),
+            std_dev_total = sd(diff),
+            .groups = 'drop')
+#
+result <- pre_post_ng_score %>% filter(abs(diff) < 4) %>%
+  group_by(group) %>%
+  summarise(mean_total = mean(ng),
+            std_dev_total = sd(ng),
+            .groups = 'drop')
+
+# Print the filtered result
+print(result)
+
+
+```
+
+#### t-test for pre-post-ng between experiment and control group for each category
+
+```{r}
+aa_pre_post_ng %>% filter(!is.infinite(aa_ng)) %>% group_by(group) %>% summarize(mean(aa_ng))
+
+t.test(aa_ng ~ group, data = aa_pre_post_ng[!is.infinite(aa_pre_post_ng$aa_ng),], paired=F, var.equal=T)
+t.test(as_ng ~ group, data = as_pre_post_ng[!is.infinite(as_pre_post_ng$as_ng),], paired=F, var.equal=T)
+t.test(dd_ng ~ group, data = dd_pre_post_ng[!is.infinite(dd_pre_post_ng$dd_ng),], paired=F, var.equal=T)
+t.test(in_ng ~ group, data = in_pre_post_ng[!is.infinite(in_pre_post_ng$in_ng),], paired=F, var.equal=T)
+t.test(ii_ng ~ group, data = ii_pre_post_ng[!is.infinite(ii_pre_post_ng$ii_ng),], paired=F, var.equal=T)
+```
+
+```{r}
+library(effsize)
+in_df = in_pre_post_ng[!is.infinite(in_pre_post_ng$in_ng),]
+# Calculate Cohen's d effect size using a formula
+cohen.d(in_df[in_df$group=='exp',]$in_ng, in_df[in_df$group=='cont',]$in_ng, paired = F)
+```
+
+```{r}
+
+ii_df = ii_pre_post_ng[!is.infinite(ii_pre_post_ng$ii_ng),]
+# Calculate Cohen's d effect size using a formula
+cohen.d(ii_df[ii_df$group=='exp',]$ii_ng, ii_df[ii_df$group=='cont',]$ii_ng)
+```
+
+#### calculate the total duration for pre and post
+
+```{r}
+pre_post_times <- pre_post_times %>% mutate(pre_total_duration = rowSums(select(., starts_with("pre_duration_"))),
+                          post_total_duration = rowSums(select(., starts_with("post_duration_"))))
+```
+
+### difference in duration on pre-test between the groups
+
+```{r}
+t.test(pre_duration_aa ~ group, data = pre_post_times, paired=F, var.equal=T)
+t.test(pre_duration_as ~ group, data = pre_post_times, paired=F, var.equal=T)
+t.test(pre_duration_dd ~ group, data = pre_post_times, paired=F, var.equal=T)
+t.test(pre_duration_in ~ group, data = pre_post_times, paired=F, var.equal=T)
+t.test(pre_duration_ii ~ group, data = pre_post_times, paired=F, var.equal=T)
+```
+
+#### difference between the groups in post duration
+
+```{r}
+t.test(post_duration_aa ~ group, data = pre_post_times, paired=F, var.equal=T)
+t.test(post_duration_as ~ group, data = pre_post_times, paired=F, var.equal=T)
+t.test(post_duration_dd ~ group, data = pre_post_times, paired=F, var.equal=T)
+t.test(post_duration_in ~ group, data = pre_post_times, paired=F, var.equal=T)
+t.test(post_duration_ii ~ group, data = pre_post_times, paired=F, var.equal=T)
+```
+
+#### difference within the group
+
+-   Experiment group
+
+```{r}
+t.test(pre_post_times[pre_post_times$group=='exp',]$post_duration_aa, pre_post_times[pre_post_times$group=='exp',]$pre_duration_aa, paired=T)
+t.test(pre_post_times[pre_post_times$group=='exp',]$post_duration_as, pre_post_times[pre_post_times$group=='exp',]$pre_duration_as, paired=T)
+t.test(pre_post_times[pre_post_times$group=='exp',]$post_duration_dd, pre_post_times[pre_post_times$group=='exp',]$pre_duration_dd, paired=T)
+t.test(pre_post_times[pre_post_times$group=='exp',]$post_duration_in, pre_post_times[pre_post_times$group=='exp',]$pre_duration_in, paired=T)
+t.test(pre_post_times[pre_post_times$group=='exp',]$post_duration_ii, pre_post_times[pre_post_times$group=='exp',]$pre_duration_ii, paired=T)
+```
+
+-   Control Group
+
+```{r}
+t.test(pre_post_times[pre_post_times$group=='cont',]$post_duration_aa, pre_post_times[pre_post_times$group=='cont',]$pre_duration_aa, paired=T)
+t.test(pre_post_times[pre_post_times$group=='cont',]$post_duration_as, pre_post_times[pre_post_times$group=='cont',]$pre_duration_as, paired=T)
+t.test(pre_post_times[pre_post_times$group=='cont',]$post_duration_dd, pre_post_times[pre_post_times$group=='cont',]$pre_duration_dd, paired=T)
+t.test(pre_post_times[pre_post_times$group=='cont',]$post_duration_in, pre_post_times[pre_post_times$group=='cont',]$pre_duration_in, paired=T)
+t.test(pre_post_times[pre_post_times$group=='cont',]$post_duration_ii, pre_post_times[pre_post_times$group=='cont',]$pre_duration_ii, paired=T)
+```
+
+```{r}
+good_students_exp <- aa_pre_post_ng %>% filter(group=='exp' & aa_ng >= -0.46)
+good_students_cont <- aa_pre_post_ng %>% filter(group=='cont' & aa_ng >= 0)
+
+summary(good_students_exp$aa_ng)
+summary(good_students_cont$aa_ng)
+
+t.test(good_students_exp$aa_ng, good_students_cont$aa_ng, paired = F)
+```
+
+```{r}
+good_students_exp <- as_pre_post_ng %>% filter(group=='exp' & as_ng >= 0.03)
+good_students_cont <- as_pre_post_ng %>% filter(group=='cont' & as_ng >= 0.06)
+
+summary(good_students_exp$as_ng)
+summary(good_students_cont$as_ng)
+
+t.test(good_students_exp$as_ng, good_students_cont$as_ng, paired = F)
+```
+
+```{r}
+good_students_exp <- dd_pre_post_ng %>% filter(group=='exp' & dd_ng >= -0.6)
+good_students_cont <- dd_pre_post_ng %>% filter(group=='cont' & dd_ng >= -0.38)
+
+summary(good_students_exp$dd_ng)
+summary(good_students_cont$dd_ng)
+
+t.test(good_students_exp$dd_ng, good_students_cont$dd_ng, paired = F)
+```
+
+```{r}
+good_students_exp <- in_pre_post_ng %>% filter(group=='exp' & in_ng >= -0.07)
+good_students_cont <- in_pre_post_ng %>% filter(group=='cont' & in_ng >= -24)
+
+summary(good_students_exp$in_ng)
+summary(good_students_cont$in_ng)
+
+t.test(good_students_exp$in_ng, good_students_cont$in_ng, paired = F)
+```
+
+```{r}
+good_students_exp <- ii_pre_post_ng %>% filter(group=='exp' & ii_ng >= -0.75)
+good_students_cont <- ii_pre_post_ng %>% filter(group=='cont' & ii_ng >= -0.09)
+
+summary(good_students_exp$ii_ng)
+summary(good_students_cont$ii_ng)
+
+t.test(good_students_exp$ii_ng, good_students_cont$ii_ng, paired = F)
+```

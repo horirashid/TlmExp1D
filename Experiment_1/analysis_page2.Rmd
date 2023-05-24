@@ -1,0 +1,38 @@
+# This file should run after initial_analysis.Rmd
+#### Normality Test
+```{r}
+all_ng <- merge(aa_pre_post_ng[,c('uid', 'group', 'aa_ng')], as_pre_post_ng[,c('uid', 'as_ng')], by = "uid")
+all_ng <- merge(all_ng, dd_pre_post_ng[,c('uid', 'dd_ng')], by = "uid")
+all_ng <- merge(all_ng, in_pre_post_ng[,c('uid', 'in_ng')], by = "uid")
+all_ng <- merge(all_ng, ii_pre_post_ng[,c('uid', 'ii_ng')], by = "uid")
+all_ng <- merge(all_ng, pre_post_ng_score[,c('uid', 'ng')], by = "uid")
+ngcols <- grep('*ng', names(all_ng))
+#ngcols = ngcols - 1
+# Define a custom function to remove infinite values
+remove_inf <- function(x) {
+    x[is.finite(x)]
+}
+
+shapiro_results <- all_ng %>% group_by(group) %>%
+  summarise(across(c(ngcols-1), ~ shapiro.test(remove_inf(.))$p.value, .names = "p_value_{.col}"))
+# Print the results
+print(shapiro_results)
+```
+
+#### mann whitney test
+```{r}
+  #summarise(across(ngcols, ~  wilcox.test(.[group == "exp"], .[group == "cont"], exact = F, paired = F)$p.value, .names = "p_value_{.col}"))
+
+  #filter(if_all(all_of(ngcols), ~ !is.infinite(.))) %>%
+
+mann_whitney_results <- all_ng %>% 
+  filter_at(vars(ngcols), all_vars(!is.infinite(.))) %>%
+  summarise(across(ngcols, ~  wilcox.test(. ~ group, exact = F, paired = F)$p.value, .names = "p_value_{.col}"))
+
+print(mann_whitney_results)
+```
+
+```{r}
+
+```
+
